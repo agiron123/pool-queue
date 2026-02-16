@@ -35,35 +35,22 @@ function App() {
       return;
     }
 
-    const trimmedName = name.trim();
-    const trimmedPin = pin.trim();
-
-    if (!trimmedPin) {
-      alert('Please enter a PIN to protect your spot in the queue.');
-      return;
-    }
-
-    if (trimmedPin.length < 4) {
-      alert('PIN must be at least 4 characters long.');
-      return;
-    }
-
     // Check if username is already registered with a different PIN
-    if (registeredPlayers.has(trimmedName)) {
-      const storedPin = registeredPlayers.get(trimmedName);
-      if (storedPin !== trimmedPin) {
+    if (registeredPlayers.has(name)) {
+      const storedPin = registeredPlayers.get(name);
+      if (storedPin !== pin) {
         alert('This username is already registered with a different PIN. Please use your registered PIN or choose a different username.');
         return;
       }
     } else {
       // Register new player
-      setRegisteredPlayers(prev => new Map(prev).set(trimmedName, trimmedPin));
+      setRegisteredPlayers(prev => new Map(prev).set(name, pin));
     }
 
     const newPlayer: Player = {
       id: crypto.randomUUID(),
-      name: trimmedName,
-      pin: trimmedPin,
+      name: name,
+      pin: pin,
       joinedAt: new Date()
     };
 
@@ -116,7 +103,7 @@ function App() {
     }
 
     // Verify PIN
-    if (verifyPin.trim() !== playerToRemove.pin) {
+    if (verifyPin !== playerToRemove.pin) {
       alert('Incorrect PIN. Cannot remove player.');
       setVerifyPin('');
       return;
@@ -195,7 +182,25 @@ function App() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (newPlayerName.trim() && newPlayerPin.trim()) addPlayer(newPlayerName, newPlayerPin);
+              const trimmedName = newPlayerName.trim();
+              const trimmedPin = newPlayerPin.trim();
+              
+              if (!trimmedName) {
+                alert('Please enter a player name.');
+                return;
+              }
+              
+              if (!trimmedPin) {
+                alert('Please enter a PIN to protect your spot in the queue.');
+                return;
+              }
+              
+              if (trimmedPin.length < 4) {
+                alert('PIN must be at least 4 characters long.');
+                return;
+              }
+              
+              addPlayer(trimmedName, trimmedPin);
             }}
             className="space-y-2"
           >
