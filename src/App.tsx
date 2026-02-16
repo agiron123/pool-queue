@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Timer, UserPlus, X, Trophy, Clock } from 'lucide-react';
+import { UserPlus, X, Trophy, Clock } from 'lucide-react';
 import type { Player, GameState } from './types';
 
 function App() {
@@ -9,16 +9,61 @@ function App() {
     averageGameDuration: 15 // default 15 minutes per game
   });
   const [newPlayerName, setNewPlayerName] = useState('');
+  const [newPlayerPin, setNewPlayerPin] = useState('');
+  const [registeredPlayers, setRegisteredPlayers] = useState<Map<string, string>>(new Map());
+  const [removingPlayerId, setRemovingPlayerId] = useState<string | null>(null);
+  const [verifyPin, setVerifyPin] = useState('');
 
-  const addPlayer = (name: string) => {
+  // Load registered players from localStorage on mount
+  useEffect(() => {
+    const stored = localStorage.getItem('registeredPlayers');
+    if (stored) {
+      const data = JSON.parse(stored);
+      setRegisteredPlayers(new Map(Object.entries(data)));
+    }
+  }, []);
+
+  // Save registered players to localStorage when it changes
+  useEffect(() => {
+    const data = Object.fromEntries(registeredPlayers);
+    localStorage.setItem('registeredPlayers', JSON.stringify(data));
+  }, [registeredPlayers]);
+
+  const addPlayer = (name: string, pin: string) => {
     if (gameState.queue.length >= 10) {
       alert('Queue is full! Maximum 10 players allowed.');
       return;
     }
 
+    const trimmedName = name.trim();
+    const trimmedPin = pin.trim();
+
+    if (!trimmedPin) {
+      alert('Please enter a PIN to protect your spot in the queue.');
+      return;
+    }
+
+    if (trimmedPin.length < 4) {
+      alert('PIN must be at least 4 characters long.');
+      return;
+    }
+
+    // Check if username is already registered with a different PIN
+    if (registeredPlayers.has(trimmedName)) {
+      const storedPin = registeredPlayers.get(trimmedName);
+      if (storedPin !== trimmedPin) {
+        alert('This username is already registered with a different PIN. Please use your registered PIN or choose a different username.');
+        return;
+      }
+    } else {
+      // Register new player
+      setRegisteredPlayers(prev => new Map(prev).set(trimmedName, trimmedPin));
+    }
+
     const newPlayer: Player = {
       id: crypto.randomUUID(),
-      name: name.trim(),
+      name: trimmedName,
+      pin: trimmedPin,
       joinedAt: new Date()
     };
 
@@ -43,16 +88,56 @@ function App() {
       };
     });
     setNewPlayerName('');
+    setNewPlayerPin('');
   };
 
   const removePlayer = (playerId: string) => {
+    setRemovingPlayerId(playerId);
+  };
+
+  const confirmRemovePlayer = () => {
+    if (!removingPlayerId) return;
+
+    // Find the player
+    let playerToRemove: Player | null = null;
+    
+    // Check active players
+    playerToRemove = gameState.activePlayers.find(p => p?.id === removingPlayerId) || null;
+    
+    // Check queue
+    if (!playerToRemove) {
+      playerToRemove = gameState.queue.find(p => p.id === removingPlayerId) || null;
+    }
+
+    if (!playerToRemove) {
+      setRemovingPlayerId(null);
+      setVerifyPin('');
+      return;
+    }
+
+    // Verify PIN
+    if (verifyPin.trim() !== playerToRemove.pin) {
+      alert('Incorrect PIN. Cannot remove player.');
+      setVerifyPin('');
+      return;
+    }
+
+    // Remove player
     setGameState(prev => ({
       ...prev,
-      queue: prev.queue.filter(p => p.id !== playerId),
+      queue: prev.queue.filter(p => p.id !== removingPlayerId),
       activePlayers: prev.activePlayers.map(p => 
-        p?.id === playerId ? null : p
+        p?.id === removingPlayerId ? null : p
       ) as [Player | null, Player | null]
     }));
+
+    setRemovingPlayerId(null);
+    setVerifyPin('');
+  };
+
+  const cancelRemovePlayer = () => {
+    setRemovingPlayerId(null);
+    setVerifyPin('');
   };
 
   const handleWinner = (winnerId: string) => {
@@ -110,25 +195,38 @@ function App() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (newPlayerName.trim()) addPlayer(newPlayerName);
+              if (newPlayerName.trim() && newPlayerPin.trim()) addPlayer(newPlayerName, newPlayerPin);
             }}
-            className="flex gap-2"
+            className="space-y-2"
           >
-            <input
-              type="text"
-              value={newPlayerName}
-              onChange={(e) => setNewPlayerName(e.target.value)}
-              placeholder="Enter player name"
-              className="flex-1 px-4 py-2 rounded-lg bg-slate-700 border border-slate-600 focus:outline-none focus:border-blue-500"
-              maxLength={20}
-            />
-            <button
-              type="submit"
-              className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-            >
-              <UserPlus size={20} />
-              Add Player
-            </button>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newPlayerName}
+                onChange={(e) => setNewPlayerName(e.target.value)}
+                placeholder="Enter player name"
+                className="flex-1 px-4 py-2 rounded-lg bg-slate-700 border border-slate-600 focus:outline-none focus:border-blue-500"
+                maxLength={20}
+              />
+              <input
+                type="password"
+                value={newPlayerPin}
+                onChange={(e) => setNewPlayerPin(e.target.value)}
+                placeholder="Enter PIN (min 4 chars)"
+                className="w-48 px-4 py-2 rounded-lg bg-slate-700 border border-slate-600 focus:outline-none focus:border-blue-500"
+                minLength={4}
+              />
+              <button
+                type="submit"
+                className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+              >
+                <UserPlus size={20} />
+                Add Player
+              </button>
+            </div>
+            <p className="text-sm text-slate-400">
+              Set a PIN to protect your spot. Usernames must be unique, but multiple users can share the same PIN.
+            </p>
           </form>
         </div>
 
@@ -168,6 +266,47 @@ function App() {
             </div>
           )}
         </div>
+
+        {/* PIN Verification Modal */}
+        {removingPlayerId && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-slate-800 p-6 rounded-lg max-w-md w-full mx-4">
+              <h3 className="text-xl font-semibold mb-4">Enter PIN to Remove Player</h3>
+              <p className="text-slate-400 mb-4">
+                Please enter the PIN for this player to confirm removal.
+              </p>
+              <input
+                type="password"
+                value={verifyPin}
+                onChange={(e) => setVerifyPin(e.target.value)}
+                placeholder="Enter PIN"
+                className="w-full px-4 py-2 rounded-lg bg-slate-700 border border-slate-600 focus:outline-none focus:border-blue-500 mb-4"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    confirmRemovePlayer();
+                  } else if (e.key === 'Escape') {
+                    cancelRemovePlayer();
+                  }
+                }}
+              />
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={cancelRemovePlayer}
+                  className="px-4 py-2 bg-slate-600 rounded-lg hover:bg-slate-500 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmRemovePlayer}
+                  className="px-4 py-2 bg-red-600 rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
