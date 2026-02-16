@@ -1,6 +1,7 @@
 export interface Player {
   id: string;
   name: string;
+  pin: string;
   joinedAt: Date;
 }
 
